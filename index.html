@@ -103,6 +103,12 @@
       </dl>
     </section>
 
+    <section id="procedures-section" hidden aria-labelledby="procedures-heading">
+      <h2 id="procedures-heading">Procedures</h2>
+      <p id="procedures-empty" hidden>No procedures are recorded for this patient.</p>
+      <ul id="procedures-list"></ul>
+    </section>
+
     <p id="error" class="notice error" role="alert" hidden></p>
     <p id="sign-out-row" hidden><a href="./" id="sign-out">Sign out</a></p>
   </main>
@@ -116,7 +122,12 @@
       .then(function (client) {
         return client.patient.read().then(function (patient) {
           showPatient(patient);
-          return loadObservations(client, client.patient.id);
+          return Promise.all([
+            loadObservations(client, client.patient.id),
+            loadProcedures(client, client.patient.id)
+          ]).then(function () {
+            document.getElementById("loading").hidden = true;
+          });
         });
       })
       .catch(function (error) {
@@ -137,7 +148,6 @@
 
     // Shows the authorized patient's name, gender, birth date, and calculated age.
     function showPatient(patient) {
-      document.getElementById("loading").hidden = true;
       document.getElementById("signed-out").hidden = true;
       document.getElementById("record").hidden = false;
       document.getElementById("results-section").hidden = false;
@@ -169,7 +179,6 @@
         var observations = entries.map(function (entry) { return entry.resource; }).filter(Boolean);
         renderResults(observations);
       }).catch(function () {
-        document.getElementById("loading").hidden = true;
         showError("We could not load recent results. Your patient information is still available.");
       });
     }
@@ -189,7 +198,47 @@
       setQuantity("ldl", latest["13457-7"]);
       setBloodPressure(latest["85354-9"], latest["8480-6"], latest["8462-4"]);
       document.getElementById("empty-state").hidden = observations.length > 0;
-      document.getElementById("loading").hidden = true;
+    }
+
+    // Requests only this patient's Procedure resources using the authorized SMART patient id.
+    function loadProcedures(client, patientId) {
+      return client.request("Procedure?patient=" + encodeURIComponent(patientId)).then(function (bundle) {
+        var entries = bundle && Array.isArray(bundle.entry) ? bundle.entry : [];
+        var procedures = entries.map(function (entry) { return entry.resource; }).filter(Boolean);
+        renderProcedures(procedures);
+      }).catch(function () {
+        showError("We could not load procedures. Your patient information and recent results are still available.");
+      });
+    }
+
+    // Reads Procedure.code, status, and performedDateTime or performedPeriod to show a readable list of procedures.
+    function renderProcedures(procedures) {
+      var list = document.getElementById("procedures-list");
+      list.textContent = "";
+      procedures.forEach(function (procedure) {
+        var item = document.createElement("li");
+        var label = document.createElement("strong");
+        var code = procedure.code || {};
+        var codings = Array.isArray(code.coding) ? code.coding : [];
+        label.textContent = code.text || (codings[0] && (codings[0].display || codings[0].code)) || "Procedure not named";
+        item.appendChild(label);
+
+        var details = [];
+        if (procedure.status) details.push("Status: " + procedure.status);
+        var performed = procedure.performedDateTime
+          || (procedure.performedPeriod && (procedure.performedPeriod.start || procedure.performedPeriod.end));
+        if (performed) details.push("Date: " + formatProcedureDate(performed));
+        if (details.length) item.appendChild(document.createTextNode(" — " + details.join(" · ")));
+        list.appendChild(item);
+      });
+      document.getElementById("procedures-empty").hidden = procedures.length > 0;
+      document.getElementById("procedures-section").hidden = false;
+    }
+
+    // Reads a Procedure performed date and formats it for the patient-facing procedure list.
+    function formatProcedureDate(value) {
+      var date = new Date(value);
+      return isNaN(date.getTime()) ? value : date.toLocaleDateString();
     }
 
     // Reads coding.code and returns the LOINC code used to select a requested observation.
