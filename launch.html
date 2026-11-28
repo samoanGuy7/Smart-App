@@ -14,7 +14,7 @@
   </main>
   <script>
     // Provider standalone against the SMART Health IT R4 sandbox.
-    // The sandbox reads the "/sim/..." segment and shows a patient login
+    // The sandbox reads the "/sim/..." segment and shows a provider login
     // because the launch type is provider-standalone (the 2 below).
     // A different iss on the query string wins, so the SMART Launcher can
     // still start this same page.
@@ -37,7 +37,7 @@
       // Request provider identity plus patient-context, read-only chart access.
       scope: new URLSearchParams(location.search).has("launch")
         ? "launch openid fhirUser user/Practitioner.read patient/Patient.read patient/Observation.read patient/Procedure.read"
-        : "launch/patient openid fhirUser user/Practitioner.read patient/Patient.read patient/Observation.read patient/Procedure.read",
+        : "openid fhirUser user/Practitioner.read",
       // Must be this app's index.html. fhir-client turns the relative URL
       // into the full GitHub Pages URL before sending it.
       redirectUri: "index.html",
