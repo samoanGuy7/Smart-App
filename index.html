@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Patient record | SMART Patient App</title>
+  <title>Provider workspace | SMART Provider App</title>
   <script src="https://cdn.jsdelivr.net/npm/fhirclient@3.0.1/bundle/fhir-client.js"></script>
   <style>
     :root {
@@ -50,20 +50,25 @@
 </head>
 <body>
   <main>
-    <h1>Patient record</h1>
+    <h1>Provider workspace</h1>
 
     <p id="loading" class="notice" role="status">Loading your patient record…</p>
 
     <section id="signed-out" hidden>
-      <p>Sign in as the patient to see your record from the SMART sandbox.</p>
+      <p>Sign in with your provider account to open a patient chart.</p>
       <nav class="links" aria-label="Patient app links">
-        <a href="./launch.html">Sign in</a>
+        <a href="./launch.html">Provider sign in</a>
         <a href="./health.html">Health check</a>
       </nav>
     </section>
 
+    <section id="provider-section" hidden aria-labelledby="provider-heading">
+      <h2 id="provider-heading">Signed-in provider</h2>
+      <p id="provider-name">Not recorded</p>
+    </section>
+
     <section id="record" hidden aria-labelledby="identity-heading">
-      <h2 id="identity-heading">Your information</h2>
+      <h2 id="identity-heading">Selected patient</h2>
       <dl>
         <dt>Name</dt>
         <dd id="name"></dd>
@@ -117,23 +122,29 @@
     var params = new URLSearchParams(location.search);
     var cameBackFromAuth = params.has("code") || params.has("error") || params.has("state");
 
-    // ready() restores the SMART session, then reads only this patient's Patient resource.
+    // ready() restores the SMART session, reads the signed-in Practitioner, then reads the selected Patient.
     FHIR.oauth2.ready()
       .then(function (client) {
-        return client.patient.read().then(function (patient) {
-          showPatient(patient);
-          return Promise.all([
-            loadObservations(client, client.patient.id),
-            loadProcedures(client, client.patient.id)
-          ]).then(function () {
+        return client.user.read().then(function (provider) {
+          showProvider(provider);
+          return client.patient.read().then(function (patient) {
+            showPatient(patient);
+            return Promise.all([
+              loadObservations(client, client.patient.id),
+              loadProcedures(client, client.patient.id)
+            ]).then(function () {
+              document.getElementById("loading").hidden = true;
+            });
+          }).catch(function () {
             document.getElementById("loading").hidden = true;
+            showError("Provider sign-in succeeded, but no patient chart was selected. Open this app from a patient chart or choose a patient in the SMART sandbox.");
           });
         });
       })
       .catch(function (error) {
         document.getElementById("loading").hidden = true;
         if (cameBackFromAuth) {
-          showError("We could not load your patient record. Please try signing in again.");
+          showError("We could not confirm your provider sign-in. Please try signing in again.");
           showSignedOut();
         } else {
           showSignedOut();
@@ -146,7 +157,13 @@
       location.href = "./";
     });
 
-    // Shows the authorized patient's name, gender, birth date, and calculated age.
+    // Reads the signed-in Practitioner name and shows which provider opened the patient chart.
+    function showProvider(provider) {
+      document.getElementById("provider-section").hidden = false;
+      document.getElementById("provider-name").textContent = formatName(provider);
+    }
+
+    // Shows the selected patient's name, gender, birth date, and calculated age.
     function showPatient(patient) {
       document.getElementById("signed-out").hidden = true;
       document.getElementById("record").hidden = false;
@@ -158,12 +175,12 @@
       document.getElementById("age").textContent = formatAge(patient.birthDate);
     }
 
-    // Shows the signed-out links so the patient can start SMART sign-in or open the health check.
+    // Shows the signed-out links so a provider can start SMART sign-in or open the health check.
     function showSignedOut() {
       document.getElementById("signed-out").hidden = false;
     }
 
-    // Shows a plain-language message while keeping the identity section visible after an observation error.
+    // Shows a plain-language message while keeping provider and patient identity visible after a chart data error.
     function showError(message) {
       var node = document.getElementById("error");
       node.hidden = false;
